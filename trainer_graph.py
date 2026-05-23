@@ -102,17 +102,28 @@ def update_plan_node(state: GraphState):
     conn = get_db_connection()
     cur = conn.cursor()
     
+    # 1. Ensure the adjustment is a string. 
+    # Sometimes LLM responses are objects; we cast to string to be safe.
+    adjustment_text = str(state.get("suggested_adjustments", ""))
+    
     query = """
         INSERT INTO training_plans (goal_name, current_status, last_updated)
         VALUES ('10k_60mins', %s, NOW())
         ON CONFLICT (goal_name) 
         DO UPDATE SET current_status = EXCLUDED.current_status, last_updated = NOW();
     """
-    cur.execute(query, (state["suggested_adjustments"],))
-    conn.commit()
-    conn.close()
     
-    print(f"Successfully updated database for goal: '10k_60mins'.")
+    try:
+        # 2. Use a tuple (adjustment_text,) for the parameters
+        cur.execute(query, (adjustment_text,))
+        conn.commit()
+        print(f"Successfully updated database for goal: '10k_60mins'.")
+    except Exception as e:
+        print(f"Error updating database: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+        
     return state
 
 # --- Graph Assembly ---
