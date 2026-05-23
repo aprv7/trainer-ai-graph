@@ -96,4 +96,38 @@ def update_plan_node(state: GraphState):
         INSERT INTO training_plans (goal_name, current_status, last_updated)
         VALUES ('10k_60mins', %s, NOW())
         ON CONFLICT (goal_name) 
-        DO UPDATE SET current_status =
+        DO UPDATE SET current_status = EXCLUDED.current_status, last_updated = NOW();
+    """
+    cur.execute(query, (state["suggested_adjustments"],))
+    conn.commit()
+    conn.close()
+    
+    print(f"Successfully updated database for goal: '10k_60mins'.")
+    return state
+
+# --- Graph Assembly ---
+
+workflow = StateGraph(GraphState)
+
+workflow.add_node("fetch_performance", fetch_performance_node)
+workflow.add_node("analyze_drift", analyze_drift_node)
+workflow.add_node("update_plan", update_plan_node)
+
+workflow.set_entry_point("fetch_performance")
+workflow.add_edge("fetch_performance", "analyze_drift")
+workflow.add_edge("analyze_drift", "update_plan")
+workflow.add_edge("update_plan", END)
+
+app = workflow.compile()
+
+# --- Execution ---
+
+if __name__ == "__main__":
+    print("--- Starting Weekly Training Audit ---")
+    final_state = app.invoke({"week_number": 1})
+    
+    print("\n--- FINAL COACHING SUMMARY ---")
+    print(f"Goal: 10k in 60 Minutes")
+    print(f"Status: {final_state['drift_status']}")
+    print(f"Advice: {final_state['suggested_adjustments']}")
+    print("--------------------------------------")
