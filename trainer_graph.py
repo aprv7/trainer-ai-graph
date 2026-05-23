@@ -69,7 +69,7 @@ def fetch_performance_node(state: GraphState):
 def analyze_drift_node(state: GraphState):
     """Gemini-powered analysis of the gap between current pace and 60m target."""
     print(f"[Node: Analyze Drift] Sending data to Gemini...")
-    llm = ChatGoogleGenerativeAI(model="gemini-3.0-flash", google_api_key=os.getenv("GOOGLE_API_KEY"))
+    llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", google_api_key=os.getenv("GOOGLE_API_KEY"))
     
     target = 360.0  # 6:00 min/km
     current = state["current_avg_pace"]
