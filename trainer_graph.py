@@ -41,20 +41,30 @@ def fetch_performance_node(state: GraphState):
     conn = get_db_connection()
     cur = conn.cursor()
     
+    # Added ::integer cast to w.activity_type to fix the operator error
     query = """
         SELECT AVG(s.avg_pace_seconds_per_km) as avg_pace
         FROM workout_splits s
         JOIN workouts w ON s.workout_id = w.id
-        WHERE w.activity_type = 37 
+        WHERE w.activity_type::integer = 37 
         AND w.start_date > CURRENT_DATE - INTERVAL '7 days'
     """
-    cur.execute(query)
-    res = cur.fetchone()
-    conn.close()
     
-    pace = res['avg_pace'] if res['avg_pace'] else 490.0
-    print(f"Result: Average pace for the last 7 days is {round(float(pace), 2)} s/km.")
-    return {"current_avg_pace": round(float(pace), 2)}
+    try:
+        cur.execute(query)
+        res = cur.fetchone()
+        conn.close()
+        
+        # If no runs found, we use your baseline pace (~490s/km)
+        pace = res['avg_pace'] if res and res['avg_pace'] else 490.0
+        print(f"Result: Average pace for the last 7 days is {round(float(pace), 2)} s/km.")
+        return {"current_avg_pace": round(float(pace), 2)}
+    
+    except Exception as e:
+        conn.close()
+        print(f"Error executing query: {e}")
+        # Fallback to baseline so the graph doesn't crash
+        return {"current_avg_pace": 490.0}
 
 def analyze_drift_node(state: GraphState):
     """Gemini-powered analysis of the gap between current pace and 60m target."""
