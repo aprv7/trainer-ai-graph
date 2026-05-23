@@ -37,10 +37,10 @@ class GraphState(TypedDict):
 
 def fetch_performance_node(state: GraphState):
     """Fetch the average pace of Running (ID 37) from the last week."""
+    print(f"\n[Node: Fetching Data] Accessing database '{PG_DB}'...")
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Joining workouts and splits to get pace for the most recent week
     query = """
         SELECT AVG(s.avg_pace_seconds_per_km) as avg_pace
         FROM workout_splits s
@@ -52,12 +52,13 @@ def fetch_performance_node(state: GraphState):
     res = cur.fetchone()
     conn.close()
     
-    # If no runs found, we use your baseline pace (~490s/km from ID 1)
     pace = res['avg_pace'] if res['avg_pace'] else 490.0
+    print(f"Result: Average pace for the last 7 days is {round(float(pace), 2)} s/km.")
     return {"current_avg_pace": round(float(pace), 2)}
 
 def analyze_drift_node(state: GraphState):
     """Gemini-powered analysis of the gap between current pace and 60m target."""
+    print(f"[Node: Analyze Drift] Sending data to Gemini...")
     llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=os.getenv("GOOGLE_API_KEY"))
     
     target = 360.0  # 6:00 min/km
@@ -77,42 +78,22 @@ def analyze_drift_node(state: GraphState):
     """
     
     response = llm.invoke(prompt)
+    drift_status = "Losing Ground" if diff > 10 else "Gaining Momentum"
+    
+    print(f"Drift Analysis complete. Status: {drift_status}")
     return {
-        "drift_status": "Losing Ground" if diff > 10 else "Gaining Momentum", 
+        "drift_status": drift_status, 
         "suggested_adjustments": response.content
     }
 
 def update_plan_node(state: GraphState):
     """Persist the adjustment and drift status back into the database."""
+    print(f"[Node: Update Plan] Saving adjustments to 'training_plans' table...")
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Ensure you have the training_plans table created first!
     query = """
         INSERT INTO training_plans (goal_name, current_status, last_updated)
         VALUES ('10k_60mins', %s, NOW())
         ON CONFLICT (goal_name) 
-        DO UPDATE SET current_status = EXCLUDED.current_status, last_updated = NOW();
-    """
-    cur.execute(query, (state["suggested_adjustments"],))
-    conn.commit()
-    conn.close()
-    
-    print(f"--- Weekly Check Complete ---")
-    print(f"Status: {state['drift_status']} | Current Pace: {state['current_avg_pace']}s/km")
-    return state
-
-# --- Graph Assembly ---
-
-workflow = StateGraph(GraphState)
-
-workflow.add_node("fetch_performance", fetch_performance_node)
-workflow.add_node("analyze_drift", analyze_drift_node)
-workflow.add_node("update_plan", update_plan_node)
-
-workflow.set_entry_point("fetch_performance")
-workflow.add_edge("fetch_performance", "analyze_drift")
-workflow.add_edge("analyze_drift", "update_plan")
-workflow.add_edge("update_plan", END)
-
-app = workflow.compile()
+        DO UPDATE SET current_status =
